@@ -1,0 +1,18 @@
+{
+  "name": "Identifikasi Barang",
+  "short_name": "Identifikasi",
+  "description": "Cek stok, harga katalog, modal, dan penjualan barang sejenis.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0F6E56",
+  "theme_color": "#0F6E56",
+  "lang": "id",
+  "icons": [
+    { "src": "ikon-192.png",          "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "ikon-512.png",          "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "ikon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

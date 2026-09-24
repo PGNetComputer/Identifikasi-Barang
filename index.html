@@ -1,0 +1,1089 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Identifikasi Barang</title>
+<meta name="theme-color" content="#0F6E56">
+<meta name="description" content="Cek stok, harga katalog, modal, dan penjualan barang sejenis.">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="ikon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Google Sans', Roboto, Arial, sans-serif;
+    font-size: 13px; color: #1f2937; background: #f1f3f0;
+    margin: 0;
+    padding: calc(14px + env(safe-area-inset-top, 0px)) 10px
+             calc(14px + env(safe-area-inset-bottom, 0px));
+    min-height: 100vh;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  .app {
+    background: #fff; border: 1px solid #e3e5e0; border-radius: 12px;
+    overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .hdr {
+    background: #0F6E56; color: #E1F5EE; padding: 12px 16px;
+    font-weight: 500; font-size: 14px; letter-spacing: .2px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .hdr .st {
+    margin-left: auto; font-size: 11px; font-weight: 400; color: #B8E6D7;
+  }
+  .hdr .st b { color: #fff; font-weight: 500; }
+  .pad { padding: 16px; }
+  label { display: block; font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+  .row { display: flex; gap: 8px; }
+  .kotak { position: relative; flex: 1; min-width: 0; }
+  input[type=text] {
+    width: 100%; height: 36px; padding: 0 12px;
+    border: 1px solid #d5d7d2; border-radius: 8px;
+    font-size: 13px; font-family: inherit; color: #1f2937;
+  }
+  input[type=text]:focus { outline: none; border-color: #0F6E56; box-shadow: 0 0 0 3px #E1F5EE; }
+  button {
+    height: 36px; padding: 0 16px; border: 1px solid #0F6E56; background: #0F6E56;
+    color: #fff; border-radius: 8px; font-size: 13px; cursor: pointer;
+    font-family: inherit; white-space: nowrap; font-weight: 500;
+  }
+  button:hover:not(:disabled) { background: #0c5a46; }
+  button:disabled { opacity: .5; cursor: default; }
+  .hint { font-size: 11px; color: #9ca3af; margin: 7px 0 0; line-height: 1.5; }
+  .hint a { color: #0F6E56; cursor: pointer; text-decoration: underline; }
+
+  /* daftar saran nama barang */
+  .saran {
+    position: absolute; z-index: 30; left: 0; right: 0; top: 40px;
+    background: #fff; border: 1px solid #d5d7d2; border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.10); overflow: hidden; display: none;
+  }
+  .saran div {
+    padding: 8px 12px; font-size: 12px; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-bottom: 1px solid #f2f3f0;
+  }
+  .saran div:last-child { border-bottom: none; }
+  .saran div:hover, .saran div.pilih { background: #E1F5EE; }
+  .saran div .stok { color: #0F6E56; font-size: 11px; margin-left: 6px; }
+  .saran .lbl {
+    padding: 6px 12px; font-size: 10px; color: #9ca3af; background: #fafbf9;
+    text-transform: uppercase; letter-spacing: .5px; cursor: default;
+  }
+  .saran .lbl:hover { background: #fafbf9; }
+
+  .sec { padding: 0 16px 16px; }
+  .sec-title {
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    margin: 0 0 9px; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .6px; color: #6b7280;
+  }
+  .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500;
+    text-transform: none; letter-spacing: 0;
+  }
+  .badge-green { background: #E1F5EE; color: #04342C; }
+  .badge-blue  { background: #E6F1FB; color: #042C53; }
+  .count {
+    margin-left: auto; font-size: 11px; color: #9ca3af; font-weight: 400;
+    text-transform: none; letter-spacing: 0;
+  }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(142px, 1fr)); gap: 10px; }
+  .card {
+    background: #f8f9f7; border: 1px solid #ebedE8; border-radius: 8px;
+    padding: 11px 13px;
+  }
+  .card .l {
+    margin: 0 0 5px; font-size: 10px; color: #6b7280;
+    text-transform: uppercase; letter-spacing: .5px; font-weight: 500;
+  }
+  .card .v { margin: 0; font-size: 17px; font-weight: 500; line-height: 1.25; word-break: break-word; }
+  .card .s { margin: 4px 0 0; font-size: 11px; color: #6b7280; line-height: 1.4; }
+
+  .alert { border-radius: 8px; padding: 10px 13px; font-size: 12px; line-height: 1.5; }
+  .alert-ok   { background: #E1F5EE; border: 1px solid #1D9E75; color: #04342C; }
+  .alert-warn { background: #FAEEDA; border: 1px solid #EF9F27; color: #412402; }
+  .alert-err  { background: #FCEBEB; border: 1px solid #E24B4A; color: #501313; }
+
+  .list { border: 1px solid #e3e5e0; border-radius: 8px; overflow: hidden; }
+  .item {
+    display: flex; justify-content: space-between; gap: 12px;
+    padding: 10px 13px; border-bottom: 1px solid #eceee9;
+  }
+  .item:nth-child(even) { background: #fafbf9; }
+  .item:last-child { border-bottom: none; }
+  .item .n { font-size: 12px; margin: 0; line-height: 1.4; font-weight: 500; }
+  .item .s { font-size: 11px; color: #9ca3af; margin: 3px 0 0; line-height: 1.4; }
+  .item .s .sep { color: #d5d7d2; margin: 0 5px; }
+  .item .s .lama { color: #B4740E; }
+  .item .p { font-size: 13px; font-weight: 500; margin: 0; text-align: right; white-space: nowrap; }
+  .item .m { font-size: 11px; color: #0F6E56; margin: 3px 0 0; text-align: right; white-space: nowrap; }
+  .item .m .kira { color: #B4740E; cursor: help; }
+  .item .mg { font-size: 11px; color: #9ca3af; margin: 2px 0 0; text-align: right; white-space: nowrap; }
+  .ket { padding: 9px 13px; background: #FAEEDA; color: #412402; font-size: 11px; line-height: 1.5; }
+  .kalimat {
+    background: #f8f9f7; border: 1px solid #ebedE8; border-radius: 8px;
+    padding: 12px 14px; font-size: 13px; line-height: 1.65; margin: 0;
+  }
+  .kalimat b { font-weight: 600; }
+  .kalimat.ok   { background: #E1F5EE; border-color: #b8e2d4; color: #04342C; }
+  .kalimat.warn { background: #FAEEDA; border-color: #f0d5a8; color: #412402; }
+  .kalimat.bad  { background: #FCEBEB; border-color: #f3c9c9; color: #501313; }
+  .baris { display: flex; gap: 10px; align-items: flex-start; }
+  .baris .kalimat { flex: 1; margin: 0; }
+  @media (max-width: 520px) { .baris { flex-direction: column; } }
+  .foot {
+    background: #f8f9f7; padding: 9px 13px; display: flex;
+    justify-content: space-between; font-size: 12px;
+  }
+  .muted { color: #9ca3af; font-size: 12px; padding: 18px; text-align: center; }
+  .umur { font-size: 11px; color: #9ca3af; padding: 0 16px 14px; }
+  .umur .tua { color: #B4740E; }
+
+  /* gerbang kode akses */
+  .gerbang { padding: 22px 16px 24px; }
+  .gerbang h2 { margin: 0 0 6px; font-size: 16px; font-weight: 500; }
+  .gerbang p { margin: 0 0 14px; font-size: 13px; color: #6b7280; line-height: 1.55; }
+  .gerbang input[type=text] {
+    font-family: 'Roboto Mono', ui-monospace, Menlo, monospace;
+    font-size: 18px; letter-spacing: 3px; text-transform: uppercase; height: 44px;
+  }
+  .gerbang button { height: 44px; }
+  .gerbang .salah {
+    margin: 10px 0 0; font-size: 12px; color: #501313; background: #FCEBEB;
+    border: 1px solid #f3c9c9; border-radius: 7px; padding: 8px 11px;
+  }
+  .keluar { color: #9ca3af; cursor: pointer; text-decoration: underline; }
+  .spin {
+    display: inline-block; width: 12px; height: 12px;
+    border: 2px solid #ddd; border-top-color: #0F6E56; border-radius: 50%;
+    animation: sp .7s linear infinite; vertical-align: -2px; margin-right: 6px;
+  }
+  @keyframes sp { to { transform: rotate(360deg); } }
+
+  @media (max-width: 480px) {
+    .grid { grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); }
+    .card .v { font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<div class="app">
+  <div class="hdr">
+    Identifikasi barang
+    <span class="st" id="status"><span class="spin"></span>Memuat data…</span>
+  </div>
+
+  <div class="gerbang" id="gerbang" hidden>
+    <h2>Masukkan kode akses</h2>
+    <p>Cukup sekali di HP ini. Kodenya didapat dari admin.</p>
+    <div class="row">
+      <div class="kotak">
+        <input type="text" id="kode" placeholder="XXXX-XXXX" maxlength="12"
+               autocomplete="off" autocapitalize="characters" spellcheck="false">
+      </div>
+      <button id="btnKode" onclick="kirimKode()">Masuk</button>
+    </div>
+    <p class="salah" id="kodeSalah" hidden></p>
+  </div>
+
+  <div class="pad" id="bagianCari">
+    <label for="q">Nama barang</label>
+    <div class="row">
+      <div class="kotak">
+        <input type="text" id="q" placeholder="ram laptop ddr4 8gb 3200"
+               autocomplete="off" spellcheck="false" disabled>
+        <div class="saran" id="saran"></div>
+      </div>
+      <button id="btn" onclick="cari()" disabled>Cari</button>
+    </div>
+    <p class="hint" id="hint">Ketik nama barang, lalu pilih dari daftar yang muncul.</p>
+  </div>
+
+  <div id="hasil"></div>
+</div>
+</div>
+
+<script>
+/* ==================================================================
+   MESIN PENCARIAN SISI BROWSER
+
+   Seluruh data diunduh SEKALI lewat identAmbilPaket(), lalu semua
+   pencarian dikerjakan di sini. Tidak ada perjalanan ke server saat
+   menekan Cari, jadi hasilnya muncul seketika.
+
+   Logikanya sengaja dibuat sama persis dengan identCariBarang() di
+   Kode.gs. Kalau salah satu diubah, ubah keduanya.
+   ================================================================== */
+
+/* ------------------------------------------------------------------
+   ALAMAT DATA
+   Alamat web app Apps Script "Identifikasi Barang". Kalau suatu hari
+   deployment-nya diganti, cukup ubah baris ini saja.
+   ------------------------------------------------------------------ */
+var APPS_SCRIPT = 'https://script.google.com/macros/s/AKfycbz1otPyPyDm2zNKStNPe9Ui5mPoMeCE0DbVJtilutqX0117ad9LSVJzEUXr9po0maR0/exec';
+
+/**
+ * Panggil Apps Script lewat JSONP (tag <script>), bukan fetch.
+ * Apps Script mengalihkan permintaan ke googleusercontent.com, dan fetch
+ * lintas-domain sering tersandung aturan CORS di situ. JSONP tidak.
+ */
+function panggil(param, selesai, batasMs) {
+  var nama = 'identCb' + Date.now() + Math.floor(Math.random() * 1000);
+  var tag = document.createElement('script');
+  var sudah = false;
+
+  function bersih() {
+    sudah = true;
+    clearTimeout(jam);
+    try { delete window[nama]; } catch (e) { window[nama] = undefined; }
+    if (tag.parentNode) tag.parentNode.removeChild(tag);
+  }
+
+  var jam = setTimeout(function () {
+    if (sudah) return;
+    bersih();
+    selesai(new Error('Server tidak menjawab. Periksa sinyal, lalu coba lagi.'));
+  }, batasMs || 60000);
+
+  window[nama] = function (isi) {
+    if (sudah) return;
+    bersih();
+    if (isi && isi.galat) {
+      var er = new Error(isi.galat);
+      er.kodeSalah = !!isi.kodeSalah;
+      selesai(er);
+    }
+    else selesai(null, isi);
+  };
+
+  tag.onerror = function () {
+    if (sudah) return;
+    bersih();
+    selesai(new Error('Tidak bisa menghubungi server.'));
+  };
+
+  tag.src = APPS_SCRIPT + '?' + param + '&k=' + encodeURIComponent(KODE || '') +
+            '&callback=' + nama + '&_=' + Date.now();
+  document.head.appendChild(tag);
+}
+
+/* ------------------------------------------------------------------
+   KODE AKSES
+   Disimpan di HP ini saja. Kalau server bilang kodenya salah (misalnya
+   admin sudah menggantinya), kode DAN salinan data di HP ini dihapus.
+   ------------------------------------------------------------------ */
+var SIMPAN_KODE = 'IDENT_KODE_v1';
+var KODE = '';
+
+function ambilKode() {
+  try { return localStorage.getItem(SIMPAN_KODE) || ''; } catch (e) { return ''; }
+}
+function simpanKode(k) {
+  try { localStorage.setItem(SIMPAN_KODE, k); } catch (e) {}
+}
+function normalKode(k) {
+  return String(k || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+/** Tampilkan gerbang kode. Dipanggil saat belum ada kode atau kodenya ditolak. */
+function mintaKode(pesan) {
+  KODE = '';
+  SIAP = false;
+  PAKET = null;
+  try { localStorage.removeItem(SIMPAN_KODE); localStorage.removeItem(SIMPAN); } catch (e) {}
+
+  document.getElementById('bagianCari').hidden = true;
+  document.getElementById('hasil').innerHTML = '';
+  document.getElementById('gerbang').hidden = false;
+  var s = document.getElementById('kodeSalah');
+  s.textContent = pesan || '';
+  s.hidden = !pesan;
+  setStatus('Perlu kode akses', false);
+  setTimeout(function () { document.getElementById('kode').focus(); }, 50);
+}
+
+function kirimKode() {
+  var k = normalKode(document.getElementById('kode').value);
+  var s = document.getElementById('kodeSalah');
+  if (k.length < 8) {
+    s.textContent = 'Kode akses terdiri dari 8 huruf dan angka.';
+    s.hidden = false;
+    return;
+  }
+  var btn = document.getElementById('btnKode');
+  btn.disabled = true; btn.textContent = 'Memeriksa…';
+  s.hidden = true;
+  KODE = k;
+
+  panggil('versi=1', function (err) {
+    btn.disabled = false; btn.textContent = 'Masuk';
+    if (err) {
+      KODE = '';
+      s.textContent = err.kodeSalah ? 'Kode akses salah. Periksa lagi, lalu coba ulang.'
+                                    : err.message;
+      s.hidden = false;
+      return;
+    }
+    simpanKode(k);
+    document.getElementById('gerbang').hidden = true;
+    document.getElementById('bagianCari').hidden = false;
+    document.getElementById('kode').value = '';
+    muatPaket(false);
+  }, 30000);
+}
+
+var PAKET   = null;   // { v, n, k, i, j }
+var NAMA_UP = [];     // salinan n dalam huruf besar, untuk pembandingan cepat
+var STOK_UP = {};     // nama (huruf besar) yang qty katalognya > 0
+var SIAP    = false;
+
+var HARI  = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+var BULAN = ['Januari','Februari','Maret','April','Mei','Juni',
+             'Juli','Agustus','September','Oktober','November','Desember'];
+var MHZ   = '2133|2400|2666|2933|3200|4800|5200|5600|6000|6400|10600|12800';
+var ASAL  = ['', 'hpp', 'hitung', 'kira', 'tebak'];
+
+/* ---------- utilitas tampilan ---------- */
+
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function fmtRp(n) {
+  if (typeof n !== 'number' || !isFinite(n)) return '';
+  var s = String(Math.round(Math.abs(n))), out = '';
+  while (s.length > 3) { out = '.' + s.slice(-3) + out; s = s.slice(0, -3); }
+  return (n < 0 ? '-Rp' : 'Rp') + s + out;
+}
+
+function fmtTgl(ms) {
+  if (!ms) return '';
+  var d = new Date(ms);
+  return HARI[d.getDay()] + ', ' + ('0' + d.getDate()).slice(-2) + ' ' +
+         BULAN[d.getMonth()] + ' ' + d.getFullYear();
+}
+
+function tengahMalam(ms) {
+  var d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** Meniru DATEDIF "M" lalu "D" dari EDATE — sama dengan identRentang_ di server. */
+function rentang(ms) {
+  if (!ms) return '';
+  var a = tengahMalam(ms), n = tengahMalam(Date.now());
+  if (a.getTime() > n.getTime()) return '0 hari';
+
+  var bln = (n.getFullYear() - a.getFullYear()) * 12 + (n.getMonth() - a.getMonth());
+  if (n.getDate() < a.getDate()) bln--;
+  if (bln < 0) bln = 0;
+
+  var maxHari = new Date(a.getFullYear(), a.getMonth() + bln + 1, 0).getDate();
+  var e = new Date(a.getFullYear(), a.getMonth() + bln, Math.min(a.getDate(), maxHari));
+  var hari = Math.round((n.getTime() - e.getTime()) / 86400000);
+  if (hari < 0) hari = 0;
+
+  return bln === 0 ? hari + ' hari' : bln + ' bulan ' + hari + ' hari';
+}
+
+/** Lama mengendap: masuk -> terjual. */
+function rentangAntara(msAwal, msAkhir) {
+  if (!msAwal || !msAkhir) return '';
+  var a = tengahMalam(msAwal), b = tengahMalam(msAkhir);
+  if (a.getTime() > b.getTime()) return '0 hari';
+
+  var bln = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  if (b.getDate() < a.getDate()) bln--;
+  if (bln < 0) bln = 0;
+
+  var maxHari = new Date(a.getFullYear(), a.getMonth() + bln + 1, 0).getDate();
+  var e = new Date(a.getFullYear(), a.getMonth() + bln, Math.min(a.getDate(), maxHari));
+  var hari = Math.round((b.getTime() - e.getTime()) / 86400000);
+  if (hari < 0) hari = 0;
+
+  return bln === 0 ? hari + ' hari' : bln + ' bulan ' + hari + ' hari';
+}
+
+function rentangLalu(ms) {
+  if (!ms) return '';
+  var a = tengahMalam(ms), n = tengahMalam(Date.now());
+  var selisih = Math.round((n.getTime() - a.getTime()) / 86400000);
+  if (selisih <= 0) return 'hari ini';
+  if (selisih === 1) return 'kemarin';
+  return rentang(ms) + ' lalu';
+}
+
+function re_(pola, flag) {
+  try {
+    return new RegExp(pola, flag || '');
+  } catch (e) {
+    return new RegExp(String(pola).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flag || '');
+  }
+}
+
+/* ---------- terjemahan formula (sama dengan Kode.gs) ---------- */
+
+function kategoriDari(teks) {
+  if (/^I[3579]-[0-9]+/.test(teks)) {
+    var cpu   = teks.match(/I[3579]/)[0];
+    var angka = teks.match(/I[3579]-([0-9]+)/)[1];
+    var gen   = (parseInt(angka, 10) >= 10000) ? angka.slice(0, 2) : angka.slice(0, 1);
+    return cpu + ' GEN' + gen;
+  }
+  var ram = teks.match(/RAM\s+LAPTOP\s+DDR[345]\s+[0-9]+\s*GB/);
+  if (ram) return ram[0];
+  return teks.replace(/\s+-\s+.*$/, '').trim();
+}
+
+function polaDari(kategori) {
+  var m = kategori.match(/^(I[3579]) GEN([0-9]+)$/);
+  if (m) return '^' + m[1] + '-' + m[2] + '[0-9]{3}';
+  return kategori.split(' ').join(' .*');
+}
+
+function kunciDari(acuan) {
+  var kapasitas = (acuan.match(/[0-9.]+\s*(?:TB|GB)/) || [''])[0];
+  var mMhz  = acuan.match(new RegExp('(' + MHZ + ')'));
+  var mhz   = mMhz ? mMhz[1] : '';
+  var mMerk = acuan.match(/-\s*([A-Z0-9]+(?:-[A-Z0-9]+)*)/);
+  var merk  = mMerk ? mMerk[1] : '';
+  var ddr   = (acuan.match(/DDR[345]/) || [''])[0];
+  var kunci;
+
+  if (/RAM LAPTOP/.test(acuan)) {
+    kunci = '^RAM LAPTOP\\s+' + ddr + '\\s+' + kapasitas + '(?:\\s|$).*' + mhz;
+  } else if (/RAM PC/.test(acuan)) {
+    kunci = '^RAM PC\\s+' + ddr + '\\s+' + kapasitas + '(?:\\s|$)';
+  } else if (/VGA/.test(acuan)) {
+    kunci = (acuan.match(/(?:RTX|GTX|RX)\s*[0-9]+/i) || [''])[0];
+  } else if (/SSD NVME.*1\s*TB/.test(acuan)) {
+    kunci = 'SSD NVME.*1\\s*TB';
+  } else if (/SSD NVME.*2\s*TB/.test(acuan)) {
+    kunci = 'SSD NVME.*2\\s*TB';
+  } else {
+    kunci = acuan;
+  }
+
+  return { kunci: kunci, mhz: mhz, merk: merk };
+}
+
+/* ---------- pencarian ---------- */
+
+function cariLokal(query) {
+  var q     = String(query || '').trim();
+  var acuan = q.toUpperCase();
+  var K = PAKET.k, INV = PAKET.i, JUAL = PAKET.j;
+  var r, i;
+
+  /* --- pembelian terakhir --- */
+  var cocok = [];
+  for (i = 0; i < INV.length; i++) {
+    if (NAMA_UP[INV[i][0]] === acuan) cocok.push(INV[i]);
+  }
+  cocok.sort(function (a, b) { return (b[3] || 0) - (a[3] || 0); });
+
+  var pembelian = cocok.length
+    ? { ada: true,
+        harga:   fmtRp(cocok[0][1]),
+        tanggal: fmtTgl(cocok[0][3]),
+        rentang: rentang(cocok[0][3]) }
+    : { ada: false, pesan: 'Tidak ditemukan' };
+
+  /* --- katalog spesifik --- */
+  var jmlKat = 0, sumQty = 0, hargaKat = null, adaKat = false, kodeReady = {};
+  for (i = 0; i < K.length; i++) {
+    if (NAMA_UP[K[i][0]] !== acuan) continue;
+    jmlKat++;
+    sumQty += K[i][1];
+    if (!adaKat) { hargaKat = K[i][2]; adaKat = true; }
+    var kdK = String(K[i][3] || '').trim().toUpperCase();
+    if (kdK) kodeReady[kdK] = true;
+  }
+
+  // Stok ready yang paling lama mengendap, ditelusuri lewat Kode ID.
+  var awalMs = null, adaKode = false;
+  for (i = 0; i < INV.length; i++) {
+    var kdI = String(INV[i][4] || '').trim().toUpperCase();
+    if (!kdI || !kodeReady[kdI]) continue;
+    adaKode = true;
+    if (INV[i][3] && (awalMs === null || INV[i][3] < awalMs)) awalMs = INV[i][3];
+  }
+  if (!adaKode) {
+    for (i = 0; i < INV.length; i++) {
+      r = INV[i];
+      if (r[2] <= 0 || NAMA_UP[r[0]] !== acuan) continue;
+      if (r[3] && (awalMs === null || r[3] < awalMs)) awalMs = r[3];
+    }
+  }
+
+  // Rata-rata modal tertimbang qty tersedia.
+  var atas = 0, bawah = 0;
+  for (i = 0; i < INV.length; i++) {
+    r = INV[i];
+    if (r[2] > 0 && NAMA_UP[r[0]] === acuan && r[1] !== null) {
+      atas  += r[1] * r[2];
+      bawah += r[2];
+    }
+  }
+
+  var spesifik = {
+    ada:    jmlKat > 0,
+    nama:   q,
+    stok:   jmlKat > 0 ? String(sumQty) : 'Kosong di Katalog',
+    harga:  (jmlKat > 0 && hargaKat !== null) ? fmtRp(hargaKat) : 'Kosong di Katalog',
+    modal:  bawah > 0 ? fmtRp(atas / bawah) : 'Tidak ditemukan',
+    margin: '',
+    awalTanggal: awalMs ? fmtTgl(awalMs) : 'Tidak ditemukan',
+    awalRentang: awalMs ? rentangLalu(awalMs) : '',
+    awalHari:    awalMs ? Math.round(
+                   (tengahMalam(Date.now()).getTime() - tengahMalam(awalMs).getTime())
+                   / 86400000) : null
+  };
+  if (spesifik.ada && hargaKat !== null && bawah > 0) {
+    var mSp = atas / bawah;
+    if (mSp) spesifik.margin = 'margin ' + ((hargaKat - mSp) / mSp * 100).toFixed(1) + '%';
+  }
+
+  /* --- katalog kategori --- */
+  var namaKat = kategoriDari(acuan);
+  var rePola  = re_(polaDari(namaKat));
+
+  var qtyKat = 0, hargaList = [], modalList = [];
+  for (i = 0; i < K.length; i++) {
+    if (!rePola.test(NAMA_UP[K[i][0]])) continue;
+    qtyKat += K[i][1];
+    if (K[i][2] !== null) hargaList.push(K[i][2]);
+  }
+  for (i = 0; i < INV.length; i++) {
+    if (INV[i][1] === null) continue;
+    if (rePola.test(NAMA_UP[INV[i][0]])) modalList.push(INV[i][1]);
+  }
+
+  function rata(arr) {
+    if (!arr.length) return null;
+    var t = 0;
+    for (var z = 0; z < arr.length; z++) t += arr[z];
+    return t / arr.length;
+  }
+
+  var hKat = rata(hargaList), mKat = rata(modalList);
+  var kategori = {
+    ada:    !!namaKat,
+    nama:   namaKat,
+    stok:   String(qtyKat),
+    harga:  hKat !== null ? fmtRp(hKat) : 'Kosong di Katalog',
+    modal:  mKat !== null ? fmtRp(mKat) : 'Tidak ditemukan',
+    margin: ''
+  };
+  if (hKat !== null && mKat) {
+    kategori.margin = 'margin ' + ((hKat - mKat) / mKat * 100).toFixed(1) + '%';
+  }
+
+  /* --- penjualan barang sejenis --- */
+  var KK      = kunciDari(acuan);
+  var reKunci = re_(KK.kunci);
+  var reKit   = /[0-9]+\s*[Xx]\s*[0-9]+\s*GB/;
+  var cekKit  = /RAM/.test(acuan) && !reKit.test(acuan);
+
+  var hasil = [];
+  for (i = 0; i < JUAL.length; i++) {
+    var t = NAMA_UP[JUAL[i][0]];
+    if (!reKunci.test(t)) continue;
+    if (cekKit && reKit.test(t)) continue;
+    hasil.push(JUAL[i]);
+  }
+
+  var reMhz  = KK.mhz  ? re_('(^|[^0-9])' + KK.mhz + '([^0-9]|$)') : null;
+  var reMerk = KK.merk ? re_(KK.merk) : null;
+
+  hasil.sort(function (x, y) {
+    var xm = reMhz ? (reMhz.test(NAMA_UP[x[0]]) ? 1 : 0) : 0;
+    var ym = reMhz ? (reMhz.test(NAMA_UP[y[0]]) ? 1 : 0) : 0;
+    if (xm !== ym) return ym - xm;
+
+    var xk = reMerk ? (reMerk.test(NAMA_UP[x[0]]) ? 1 : 0) : 1;
+    var yk = reMerk ? (reMerk.test(NAMA_UP[y[0]]) ? 1 : 0) : 1;
+    if (xk !== yk) return yk - xk;
+
+    return (y[1] || 0) - (x[1] || 0);
+  });
+  hasil = hasil.slice(0, 10);
+
+  // Indeks inventory: lewat Kode Barang (tepat), cadangan lewat nama.
+  var indeksKode = {}, indeksNama = {};
+  for (i = 0; i < INV.length; i++) {
+    r = INV[i];
+    var kd = String(r[4] || '').trim().toUpperCase();
+    if (kd && !(kd in indeksKode)) indeksKode[kd] = r;
+    var nmu = NAMA_UP[r[0]];
+    if (!(nmu in indeksNama)) indeksNama[nmu] = r;
+  }
+
+  var sejenis = hasil.map(function (x) {
+    var kd  = String(x[4] || '').trim().toUpperCase();
+    var ref = (kd && indeksKode[kd]) || indeksNama[NAMA_UP[x[0]]] || null;
+    var lewatKode = !!(kd && indeksKode[kd]);
+
+    var modal = x[3], asal = ASAL[x[5]] || '';
+    if (modal === null && ref) { modal = ref[1]; asal = 'tebak'; }
+
+    return {
+      nama:        PAKET.n[x[0]],
+      kode:        x[4] || '',
+      tanggalJual: fmtTgl(x[1]),
+      hargaJual:   fmtRp(x[2]),
+      rentangJual: rentangLalu(x[1]),
+      tanggalBeli: ref ? fmtTgl(ref[3]) : 'Tidak ditemukan',
+      hargaBeli:   modal !== null ? fmtRp(modal) : 'Tidak ditemukan',
+      rentangStok: ref ? rentangAntara(ref[3], x[1]) : '',
+      modalAsal:   asal,
+      tanggalTepat: lewatKode,
+      margin: (modal && x[2]) ? ((x[2] - modal) / modal * 100).toFixed(1) + '%' : ''
+    };
+  });
+
+  /* --- ringkasan --- */
+  var rataJual = '', rentangHarga = '';
+  var tot = 0, n = 0, min = 0, max = 0;
+  for (i = 0; i < hasil.length; i++) {
+    var v = hasil[i][2];
+    if (v === null) continue;
+    tot += v; n++;
+    if (!min || v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (n) {
+    rataJual = fmtRp(tot / n);
+    if (min !== max) rentangHarga = fmtRp(min) + ' – ' + fmtRp(max);
+  }
+
+  return {
+    query: q, pembelian: pembelian, spesifik: spesifik, kategori: kategori,
+    sejenis: sejenis, rataJual: rataJual, rentangHarga: rentangHarga,
+    umurData: Math.round((Date.now() - PAKET.v) / 1000)
+  };
+}
+
+/* ==================================================================
+   MEMUAT PAKET DATA
+
+   Urutan saat halaman dibuka:
+     1. Kalau ada salinan tersimpan di browser -> langsung dipakai,
+        kolom cari aktif seketika, tidak ada "Memuat data...".
+     2. Di latar, tanya server apakah ada data lebih baru. Kalau ada,
+        diunduh diam-diam lalu salinannya diperbarui.
+     3. Kalau belum ada salinan sama sekali -> baru unduh penuh.
+   ================================================================== */
+
+var SIMPAN     = 'IDENT_PAKET_v1';   // naikkan kalau bentuk paket berubah
+var MAKS_SIMPAN = 3 * 24 * 3600 * 1000;   // salinan lebih tua dari 3 hari diabaikan
+var SEDANG_UNDUH = false;
+
+/** Ambil salinan dari penyimpanan browser. Aman kalau diblokir/penuh. */
+function ambilSimpanan() {
+  try {
+    var s = localStorage.getItem(SIMPAN);
+    if (!s) return null;
+    var p = JSON.parse(s);
+    if (!p || !p.n || !p.j || !p.v) return null;
+    if (Date.now() - p.v > MAKS_SIMPAN) return null;   // terlalu basi
+    return p;
+  } catch (e) {
+    return null;     // localStorage diblokir browser — jalan seperti biasa
+  }
+}
+
+function simpanPaket(p) {
+  try {
+    localStorage.setItem(SIMPAN, JSON.stringify(p));
+  } catch (e) {
+    // penyimpanan penuh atau diblokir — tidak apa-apa, cuma tidak tersimpan
+  }
+}
+
+function setStatus(teks, sibuk) {
+  document.getElementById('status').innerHTML =
+    (sibuk ? '<span class="spin"></span>' : '') + teks;
+}
+
+function statusSiap(sibuk) {
+  if (!PAKET) return;
+  setStatus('<b>' + PAKET.j.length.toLocaleString('id-ID') + '</b> transaksi · ' +
+            umurTeks(Math.round((Date.now() - PAKET.v) / 1000)) +
+            (sibuk ? ' · menyegarkan' : ''), sibuk);
+}
+
+function siapkanPaket(p) {
+  PAKET = p;
+  NAMA_UP = [];
+  for (var i = 0; i < p.n.length; i++) NAMA_UP.push(p.n[i].trim().toUpperCase());
+
+  STOK_UP = {};
+  for (i = 0; i < p.k.length; i++) {
+    if (p.k[i][1] > 0) STOK_UP[NAMA_UP[p.k[i][0]]] = true;
+  }
+
+  SIAP = true;
+  document.getElementById('q').disabled = false;
+  document.getElementById('btn').disabled = false;
+  statusSiap(SEDANG_UNDUH);
+}
+
+function muatPaket(diam) {
+  if (SEDANG_UNDUH) return;
+  SEDANG_UNDUH = true;
+  if (diam) statusSiap(true); else setStatus('Memuat data…', true);
+
+  panggil('data=1', function (err, p) {
+    if (!err) {
+      SEDANG_UNDUH = false;
+      if (!p || !p.n) { setStatus('Data kosong', false); return; }
+      siapkanPaket(p);
+      simpanPaket(p);
+      var q = document.getElementById('q').value.trim();
+      if (q && document.getElementById('hasil').innerHTML.indexOf('Menghitung') > -1) cari();
+      return;
+    }
+    (function (err) {
+      SEDANG_UNDUH = false;
+      if (err && err.kodeSalah) { mintaKode('Kode akses sudah diganti admin. Masukkan kode yang baru.'); return; }
+      if (SIAP) {                      // masih ada salinan lama — cukup diam
+        statusSiap(false);
+        return;
+      }
+      setStatus('Gagal memuat data', false);
+      document.getElementById('hasil').innerHTML =
+        '<div class="sec"><div class="alert alert-err"><b>Data tidak bisa dimuat.</b><br>' +
+        esc(err && err.message ? err.message : 'Kesalahan tidak diketahui') +
+        '<br>Coba muat ulang halaman ini.</div></div>';
+    })(err);
+  }, 90000);
+}
+
+/** Cek berkala: kalau server punya data lebih baru, unduh diam-diam. */
+function cekVersi() {
+  if (!SIAP || SEDANG_UNDUH) return;
+  panggil('versi=1', function (err, isi) {
+    if (err && err.kodeSalah) { mintaKode('Kode akses sudah diganti admin. Masukkan kode yang baru.'); return; }
+    if (err || !isi) return;
+    if (isi.v && PAKET && isi.v > PAKET.v) muatPaket(true);
+    else statusSiap(false);
+  }, 20000);
+}
+
+function muatUlangManual() {
+  muatPaket(true);
+  return false;
+}
+
+/* ==================================================================
+   DAFTAR SARAN NAMA BARANG
+   ================================================================== */
+
+var idxPilih = -1, saranAktif = [];
+
+function tampilSaran() {
+  var el = document.getElementById('saran');
+  var teks = document.getElementById('q').value.trim().toUpperCase();
+
+  if (!SIAP || teks.length < 2) { el.style.display = 'none'; return; }
+
+  var awal = [], tengah = [], sudah = {};
+  for (var i = 0; i < NAMA_UP.length && (awal.length + tengah.length) < 60; i++) {
+    var nu = NAMA_UP[i];
+    if (sudah[nu]) continue;
+    var p = nu.indexOf(teks);
+    if (p < 0) continue;
+    sudah[nu] = true;
+    (p === 0 ? awal : tengah).push(i);
+  }
+
+  // Yang masih ada stoknya didahulukan di tiap kelompok.
+  function urut(a) {
+    return a.sort(function (x, y) {
+      var sx = STOK_UP[NAMA_UP[x]] ? 1 : 0, sy = STOK_UP[NAMA_UP[y]] ? 1 : 0;
+      if (sx !== sy) return sy - sx;
+      return PAKET.n[x].length - PAKET.n[y].length;
+    });
+  }
+
+  saranAktif = urut(awal).concat(urut(tengah)).slice(0, 12);
+  idxPilih = -1;
+
+  if (!saranAktif.length) { el.style.display = 'none'; return; }
+
+  var h = '';
+  for (i = 0; i < saranAktif.length; i++) {
+    var id = saranAktif[i];
+    h += '<div data-i="' + i + '">' + esc(PAKET.n[id]) +
+         (STOK_UP[NAMA_UP[id]] ? '<span class="stok">ada stok</span>' : '') + '</div>';
+  }
+  el.innerHTML = h;
+  el.style.display = 'block';
+
+  var anak = el.children;
+  for (i = 0; i < anak.length; i++) {
+    anak[i].onmousedown = function (e) {
+      e.preventDefault();
+      pilihSaran(parseInt(this.getAttribute('data-i'), 10));
+    };
+  }
+}
+
+function pilihSaran(i) {
+  if (i < 0 || i >= saranAktif.length) return;
+  document.getElementById('q').value = PAKET.n[saranAktif[i]];
+  tutupSaran();
+  cari();
+}
+
+function tutupSaran() {
+  document.getElementById('saran').style.display = 'none';
+  idxPilih = -1;
+}
+
+function sorotSaran(arah) {
+  var el = document.getElementById('saran');
+  if (el.style.display !== 'block') return;
+  var anak = el.children;
+  if (idxPilih >= 0 && anak[idxPilih]) anak[idxPilih].className = '';
+  idxPilih += arah;
+  if (idxPilih < 0) idxPilih = anak.length - 1;
+  if (idxPilih >= anak.length) idxPilih = 0;
+  if (anak[idxPilih]) anak[idxPilih].className = 'pilih';
+}
+
+/* ==================================================================
+   PENCARIAN & TAMPILAN
+   ================================================================== */
+
+function cari() {
+  var q = document.getElementById('q').value.trim();
+  if (!q) return;
+  tutupSaran();
+
+  if (!SIAP) {
+    document.getElementById('hasil').innerHTML =
+      '<div class="muted"><span class="spin"></span>Menghitung…</div>';
+    return;   // akan otomatis dijalankan begitu paket selesai diunduh
+  }
+
+  try {
+    render(cariLokal(q));
+  } catch (e) {
+    document.getElementById('hasil').innerHTML =
+      '<div class="sec"><div class="alert alert-err">' + esc(e.message) + '</div></div>';
+  }
+}
+
+function kartu(label, value, sub) {
+  return '<div class="card"><p class="l">' + label + '</p>' +
+         '<p class="v">' + esc(value || '-') + '</p>' +
+         (sub ? '<p class="s">' + esc(sub) + '</p>' : '') + '</div>';
+}
+
+function kelasUmurKalimat(hari) {
+  if (hari == null) return '';
+  if (hari >= 90) return ' bad';
+  if (hari >= 60) return ' warn';
+  return ' ok';
+}
+
+function umurTeks(detik) {
+  if (detik == null) return '';
+  if (detik < 60) return 'baru saja';
+  var m = Math.round(detik / 60);
+  if (m < 60) return m + ' menit lalu';
+  return Math.round(m / 60) + ' jam lalu';
+}
+
+function render(d) {
+  var h = '';
+
+  h += '<div class="sec">';
+  if (d.spesifik.ada) {
+    h += '<div class="alert alert-ok">Ditemukan di katalog spesifik</div>';
+  } else {
+    h += '<div class="alert alert-warn"><b>Tidak ditemukan di katalog spesifik</b><br>' +
+         (d.kategori.ada
+            ? 'Data diambil dari kategori ' + esc(d.kategori.nama)
+            : 'Kategori juga tidak ditemukan') + '</div>';
+  }
+  h += '</div>';
+
+  h += '<div class="sec"><p class="sec-title">Pembelian</p>';
+  if (d.pembelian.ada) {
+    h += '<div class="baris">' +
+         '<p class="kalimat">Terakhir barang masuk <b>' +
+         esc(d.pembelian.rentang) + ' lalu</b>, yaitu ' +
+         esc(d.pembelian.tanggal) + ', harga beli <b>' +
+         esc(d.pembelian.harga) + '</b>.</p>';
+    if (d.spesifik.ada && d.spesifik.awalRentang) {
+      h += '<p class="kalimat' + kelasUmurKalimat(d.spesifik.awalHari) +
+           '">Stok terlama yang belum terjual dibeli <b>' +
+           esc(d.spesifik.awalRentang) + '</b>, yaitu ' +
+           esc(d.spesifik.awalTanggal) + '.</p>';
+    }
+    h += '</div>';
+    if (d.spesifik.ada && d.spesifik.awalRentang) {
+      h += '<p class="hint">Warna stok terlama: hijau di bawah 2 bulan, ' +
+           'kuning 2&ndash;3 bulan, merah lewat 3 bulan.</p>';
+    }
+  } else {
+    h += '<div class="alert alert-warn">' + esc(d.pembelian.pesan) + '</div>';
+  }
+  h += '</div>';
+
+  if (d.spesifik.ada) {
+    h += '<div class="sec"><p class="sec-title">Katalog spesifik' +
+         '<span class="badge badge-green">' + esc(d.spesifik.nama) + '</span></p><div class="grid">' +
+         kartu('Stok katalog', d.spesifik.stok) +
+         kartu('Harga katalog', d.spesifik.harga) +
+         kartu('Rata-rata modal', d.spesifik.modal, d.spesifik.margin) +
+         '</div></div>';
+  }
+
+  if (d.kategori.ada) {
+    h += '<div class="sec"><p class="sec-title">Katalog kategori' +
+         '<span class="badge badge-blue">' + esc(d.kategori.nama) + '</span></p><div class="grid">' +
+         kartu('Stok kategori', d.kategori.stok) +
+         kartu('Harga rata-rata', d.kategori.harga) +
+         kartu('Rata-rata modal', d.kategori.modal, d.kategori.margin) +
+         '</div></div>';
+  }
+
+  h += '<div class="sec"><p class="sec-title">Penjualan barang sejenis' +
+       '<span class="count">' + d.sejenis.length + ' transaksi</span></p>';
+
+  if (!d.sejenis.length) {
+    h += '<div class="list"><div class="muted">Tidak ada penjualan sejenis</div></div>';
+  } else {
+    h += '<div class="list">';
+    var adaKira = false;
+    for (var i = 0; i < d.sejenis.length; i++) {
+      var x = d.sejenis[i];
+      var kira = (x.modalAsal === 'kira' || x.modalAsal === 'tebak' || !x.modalAsal);
+      if (kira) adaKira = true;
+
+      var judul = x.modalAsal === 'hpp'
+            ? 'HPP transaksi ini'
+            : x.modalAsal === 'hitung'
+              ? 'Harga jual dikurangi keuntungan per unit transaksi ini'
+              : x.modalAsal === 'kira'
+                ? 'Perkiraan — qty transaksi tidak tercatat, benar kalau penjualannya 1 unit'
+                : 'Perkiraan — diambil dari batch senama, bukan unit yang terjual';
+
+      h += '<div class="item"><div>' +
+           '<p class="n">' + esc(x.nama) + '</p>' +
+           '<p class="s" title="' + esc(x.tanggalJual) + '">' +
+           (x.rentangJual ? 'terjual ' + esc(x.rentangJual) : esc(x.tanggalJual)) +
+           (x.rentangStok ? '<span class="sep">·</span><span class="lama">stok sampai terjual ' +
+                            esc(x.rentangStok) + '</span>' : '') + '</p>' +
+           '</div><div>' +
+           '<p class="p">' + esc(x.hargaJual) + '</p>' +
+           '<p class="m" title="' + esc(judul) + '">' +
+             (kira ? '<span class="kira">± modal ' + esc(x.hargaBeli) + '</span>'
+                   : 'modal ' + esc(x.hargaBeli)) +
+           '</p>' +
+           (x.margin ? '<p class="mg">margin ' + esc(x.margin) + '</p>' : '') +
+           '</div></div>';
+    }
+    if (d.rataJual) {
+      h += '<div class="foot"><span style="color:#6b7280">Rata-rata jual</span><b>' +
+           esc(d.rataJual) + '</b></div>';
+    }
+    if (d.rentangHarga) {
+      h += '<div class="foot" style="border-top:1px solid #eceee9">' +
+           '<span style="color:#6b7280">Rentang harga</span><b>' +
+           esc(d.rentangHarga) + '</b></div>';
+    }
+    if (adaKira) {
+      h += '<div class="ket">Tanda <b>±</b> berarti modalnya perkiraan — kolom HPP ' +
+           'pada transaksi itu kosong, jadi angkanya diturunkan dari keuntungan atau ' +
+           'diambil dari batch senama. Arahkan kursor ke angkanya untuk melihat asalnya.</div>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+
+  var tua = d.umurData > 1800;
+  h += '<div class="umur">Data <span class="' + (tua ? 'tua' : '') + '">diperbarui ' +
+       esc(umurTeks(d.umurData)) + '</span> · pembaruan otomatis tiap 10 menit · ' +
+       '<a href="#" onclick="return muatUlangManual()" style="color:#0F6E56">muat ulang sekarang</a>' +
+       '</div>';
+
+  document.getElementById('hasil').innerHTML = h;
+}
+
+/* ==================================================================
+   PEMASANGAN
+   ================================================================== */
+
+(function () {
+  var q = document.getElementById('q');
+
+  q.addEventListener('input', tampilSaran);
+  q.addEventListener('focus', tampilSaran);
+  q.addEventListener('blur', function () { setTimeout(tutupSaran, 120); });
+
+  q.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown')      { e.preventDefault(); sorotSaran(1); }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); sorotSaran(-1); }
+    else if (e.key === 'Escape')    { tutupSaran(); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (idxPilih >= 0) pilihSaran(idxPilih);
+      else cari();
+    }
+  });
+
+  document.getElementById('kode').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); kirimKode(); }
+  });
+
+  // Belum ada kode di HP ini -> minta dulu, jangan tarik data apa pun.
+  KODE = ambilKode();
+  if (!KODE) {
+    mintaKode('');
+  } else {
+    bukaAplikasi();
+  }
+
+  setInterval(cekVersi, 5 * 60 * 1000);   // cek data baru tiap 5 menit
+
+  // Aplikasi di HP sering dibiarkan di latar. Begitu dibuka lagi, cek pembaruan.
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') cekVersi();
+  });
+
+  // Service worker: syarat dipasang sebagai aplikasi, sekaligus supaya
+  // tampilan tetap terbuka walau sedang tanpa sinyal.
+  var diAppsScript = location.hostname.indexOf('googleusercontent.com') > -1;
+  if ('serviceWorker' in navigator && !diAppsScript) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () {});
+    });
+  }
+})();
+
+/** Sudah ada kode: pakai salinan tersimpan kalau ada, lalu periksa pembaruan. */
+function bukaAplikasi() {
+  var tersimpan = ambilSimpanan();
+  if (tersimpan) {
+    siapkanPaket(tersimpan);
+    setTimeout(cekVersi, 300);
+  } else {
+    muatPaket(false);
+  }
+}
+</script>
+</body>
+</html>
