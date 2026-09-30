@@ -242,7 +242,8 @@ function panggil(param, selesai, batasMs) {
   function bersih() {
     sudah = true;
     clearTimeout(jam);
-    try { delete window[nama]; } catch (e) { window[nama] = undefined; }
+    window[nama] = function () {};           // jawaban telat tidak bikin error
+    setTimeout(function () { try { delete window[nama]; } catch (e) {} }, 120000);
     if (tag.parentNode) tag.parentNode.removeChild(tag);
   }
 
@@ -685,7 +686,7 @@ function cariLokal(query) {
 
 var SIMPAN     = 'IDENT_PAKET_v1';   // naikkan kalau bentuk paket berubah
 var MAKS_SIMPAN = 3 * 24 * 3600 * 1000;   // salinan lebih tua dari 3 hari diabaikan
-var SEDANG_UNDUH = false;
+var SEDANG_UNDUH = false, PERCOBAAN = 0;
 
 /** Ambil salinan dari penyimpanan browser. Aman kalau diblokir/penuh. */
 function ambilSimpanan() {
@@ -745,6 +746,7 @@ function muatPaket(diam) {
   panggil('data=1', function (err, p) {
     if (!err) {
       SEDANG_UNDUH = false;
+      PERCOBAAN = 0;
       if (!p || !p.n) { setStatus('Data kosong', false); return; }
       siapkanPaket(p);
       simpanPaket(p);
@@ -759,11 +761,21 @@ function muatPaket(diam) {
         statusSiap(false);
         return;
       }
+      // Belum punya salinan: coba lagi otomatis. Percobaan pertama sering
+      // "membangunkan" server, percobaan berikutnya biasanya berhasil.
+      PERCOBAAN++;
+      if (PERCOBAAN < 4) {
+        setStatus('Mencoba lagi… (' + (PERCOBAAN + 1) + '/4)', true);
+        setTimeout(function () { muatPaket(false); }, PERCOBAAN * 4000);
+        return;
+      }
+      PERCOBAAN = 0;
       setStatus('Gagal memuat data', false);
       document.getElementById('hasil').innerHTML =
         '<div class="sec"><div class="alert alert-err"><b>Data tidak bisa dimuat.</b><br>' +
         esc(err && err.message ? err.message : 'Kesalahan tidak diketahui') +
-        '<br>Coba muat ulang halaman ini.</div></div>';
+        '<br>Periksa sinyal, lalu tekan tombol di bawah.<br><br>' +
+        '<button onclick="this.disabled=true;muatPaket(false)">Coba lagi</button></div></div>';
     })(err);
   }, 90000);
 }
