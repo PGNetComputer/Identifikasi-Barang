@@ -809,7 +809,22 @@ function muatPaket(diam, penuh) {
   penuh = !!penuh || !BLOK;
   if (diam) statusSiap(true); else setStatus('Memuat data…', true);
 
-  ambilData(penuh, function (err, p, B) {
+  var beres = false;
+  var penjaga = setTimeout(function () {
+    akhir(new Error('Terlalu lama (' + TAHAP + '). Periksa sinyal, lalu coba lagi.'));
+  }, 4 * 60 * 1000);
+  TAHAP = 'menghubungi server';
+
+  function akhir(err, p, B) {
+    if (beres) return;
+    beres = true;
+    clearTimeout(penjaga);
+    try { hasilMuat(err, p, B); }
+    catch (e) { SEDANG_UNDUH = false; setStatus('Galat: ' + esc(e.message), false); }
+  }
+  try { ambilData(penuh, akhir); } catch (e) { akhir(e); }
+
+  function hasilMuat(err, p, B) {
     if (!err) {
       SEDANG_UNDUH = false;
       PERCOBAAN = 0;
@@ -848,7 +863,16 @@ function muatPaket(diam, penuh) {
       esc(err && err.message ? err.message : 'Kesalahan tidak diketahui') +
       '<br>Periksa sinyal, lalu tekan tombol di bawah.<br><br>' +
       '<button onclick="this.disabled=true;muatPaket(false,true)">Coba lagi</button></div></div>';
-  });
+  }
+}
+
+var TAHAP = '';
+/** Bungkus callback: error apa pun diteruskan ke "selesai", bukan membuat aplikasi macet. */
+function aman(selesai, fn) {
+  return function () {
+    try { return fn.apply(this, arguments); }
+    catch (e) { selesai(new Error('Galat aplikasi: ' + (e && e.message ? e.message : e))); }
+  };
 }
 
 /** Panggil server, dicoba ulang sampai 3 kali kalau jaringan gagal. */
@@ -869,10 +893,29 @@ function panggilUlang(q, cb, coba) {
  * 3. Unduh potongan itu BERSAMAAN, dikelompokkan ± 200 ribu karakter per permintaan.
  * 4. Rakit paket; potongan yang sudah tidak dipakai dibuang.
  */
-function ambilData(penuh, selesai, ulang) {
+function ambilData(penuh, selesaiAsli, ulang) {
+  var sudahSelesai = false, cadangan = false;
+  function selesai(err, p, B) {
+    if (sudahSelesai) return;
+    // Cara potongan gagal (bukan karena kode akses) -> sekali coba cara lama.
+    if (err && !err.kodeSalah && !cadangan) {
+      cadangan = true;
+      TAHAP = 'cara cadangan';
+      if (!SIAP) setStatus('Memuat data… (cara cadangan)', true);
+      ambilPaketLama(function (e2, p2) {
+        sudahSelesai = true;
+        if (e2) e2.message = e2.message + ' [potongan: ' + err.message + ']';
+        selesaiAsli(e2, p2);
+      });
+      return;
+    }
+    sudahSelesai = true;
+    selesaiAsli(err, p, B);
+  }
   // "bagian=0" membuat server LAMA menjawab potongan paket lama (bukan paket
   // utuh yang terlalu besar), jadi aplikasi ini tetap jalan sebelum Kode.gs diperbarui.
-  panggilUlang('data=1&f=3&daftar=1&bagian=0', function (err, D) {
+  TAHAP = 'mengambil daftar';
+  panggilUlang('data=1&f=3&daftar=1&bagian=0', aman(selesai, function (err, D) {
     if (err) { selesai(err); return; }
     if (D && !D.d && typeof D.s === 'string') { ambilPaketLama(selesai); return; }   // server lama
     if (!D || !D.d) { selesai(new Error('Jawaban server tidak dikenali.')); return; }
@@ -907,9 +950,10 @@ function ambilData(penuh, selesai, ulang) {
       selesai(null, p, B);
     }
 
+    TAHAP = 'mengunduh ' + perlu.length + ' potongan';
     if (!sisa) { rakit(); return; }
     kelompok.forEach(function (daftar) {
-      panggilUlang('data=1&f=3&ambil=' + daftar.join(','), function (err, r) {
+      panggilUlang('data=1&f=3&ambil=' + daftar.join(','), aman(selesai, function (err, r) {
         if (gagal) return;
         if (err) { gagal = true; selesai(err); return; }
         if (r.hilang && r.hilang.length) {          // data diperbarui saat mengunduh
@@ -921,21 +965,22 @@ function ambilData(penuh, selesai, ulang) {
         for (var h in r.b) { baru[h] = r.b[h]; }
         daftar.forEach(function (h) { var e = perlu.filter(function (x) { return x[0] === h; })[0]; if (e) dapat += e[1]; });
         if (!SIAP) setStatus('Memuat data… ' + Math.round(dapat / perluKar * 100) + '%', true);
+        TAHAP = 'mengunduh potongan ' + Math.round(dapat / perluKar * 100) + '%';
         if (--sisa === 0) rakit();
-      });
+      }));
     });
-  });
+  }));
 }
 
 /** Cadangan untuk server yang belum diperbarui: paket utuh dalam beberapa bagian. */
 function ambilPaketLama(selesai, ulang) {
   var potong = [], versi = null, sisa = 0, gagal = false;
   function ambil(i, lanjut) {
-    panggilUlang('data=1&bagian=' + i, function (err, r) {
+    panggilUlang('data=1&bagian=' + i, aman(selesai, function (err, r) {
       if (gagal) return;
       if (err) { gagal = true; selesai(err); return; }
       lanjut(r);
-    });
+    }));
   }
   function selesaiSemua() {
     var p;
