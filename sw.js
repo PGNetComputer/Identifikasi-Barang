@@ -11,7 +11,7 @@
  *
  * Panggilan ke Apps Script (domain lain) sengaja TIDAK disentuh.
  */
-var CACHE = 'identifikasi-v5';
+var CACHE = 'identifikasi-v7';
 var ASET = [
   './',
   './index.html',

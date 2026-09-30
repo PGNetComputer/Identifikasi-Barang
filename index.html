@@ -298,7 +298,7 @@ function mintaKode(pesan) {
   KODE = '';
   SIAP = false;
   PAKET = null;
-  try { localStorage.removeItem(SIMPAN_KODE); localStorage.removeItem(SIMPAN); } catch (e) {}
+  try { localStorage.removeItem(SIMPAN_KODE); localStorage.removeItem(SIMPAN); localStorage.removeItem(SIMPAN_CEK); localStorage.removeItem(SIMPAN_PENUH); localStorage.removeItem(SIMPAN_LAMA); BLOK = null; } catch (e) {}
 
   document.getElementById('bagianCari').hidden = true;
   document.getElementById('hasil').innerHTML = '';
@@ -336,7 +336,7 @@ function kirimKode() {
     document.getElementById('gerbang').hidden = true;
     document.getElementById('bagianCari').hidden = false;
     document.getElementById('kode').value = '';
-    muatPaket(false);
+    muatPaket(false, true);
   }, 30000);
 }
 
@@ -669,7 +669,7 @@ function cariLokal(query) {
   return {
     query: q, pembelian: pembelian, spesifik: spesifik, kategori: kategori,
     sejenis: sejenis, rataJual: rataJual, rentangHarga: rentangHarga,
-    umurData: Math.round((Date.now() - PAKET.v) / 1000)
+    umurData: Math.round((Date.now() - (PAKET.t || PAKET.v)) / 1000)
   };
 }
 
@@ -684,30 +684,87 @@ function cariLokal(query) {
      3. Kalau belum ada salinan sama sekali -> baru unduh penuh.
    ================================================================== */
 
-var SIMPAN     = 'IDENT_PAKET_v1';   // naikkan kalau bentuk paket berubah
-var MAKS_SIMPAN = 3 * 24 * 3600 * 1000;   // salinan lebih tua dari 3 hari diabaikan
-var SEDANG_UNDUH = false, PERCOBAAN = 0;
+var SIMPAN      = 'IDENT_BLOK_v3';      // potongan data di HP ini
+var SIMPAN_LAMA = 'IDENT_PAKET_v1';     // bentuk lama, dihapus supaya tidak makan tempat
+var SIMPAN_CEK  = 'IDENT_CEK_v1';       // kapan terakhir server memastikan data masih sama
+var SIMPAN_PENUH = 'IDENT_PENUH_v1';    // tanggal terakhir unduh penuh
+var MAKS_SIMPAN = 3 * 24 * 3600 * 1000; // salinan lebih tua dari 3 hari diabaikan
+var BATCH_KAR   = 200000;               // maks ± karakter per permintaan potongan
+var SEDANG_UNDUH = false, PERCOBAAN = 0, GAGAL_SEGAR = false;
+var BLOK = null;                        // { v, t, bl, d:{n,k,i,j}, b:{sidik: baris} }
 
-/** Ambil salinan dari penyimpanan browser. Aman kalau diblokir/penuh. */
+function lsAmbil(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsTaruh(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+function lsHapus(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+function hariIni() {
+  var d = new Date();
+  return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
+}
+/** Sekali sehari (saat pertama dibuka) unduh semua potongan sebagai jaring pengaman. */
+function perluPenuh() { return lsAmbil(SIMPAN_PENUH) !== hariIni(); }
+
+/** Ambil salinan potongan dari penyimpanan browser. Aman kalau diblokir/penuh. */
 function ambilSimpanan() {
   try {
-    var s = localStorage.getItem(SIMPAN);
+    var s = lsAmbil(SIMPAN);
     if (!s) return null;
-    var p = JSON.parse(s);
-    if (!p || !p.n || !p.j || !p.v) return null;
-    if (Date.now() - p.v > MAKS_SIMPAN) return null;   // terlalu basi
-    return p;
+    var B = JSON.parse(s);
+    if (!B || !B.d || !B.b || !B.v) return null;
+    B.t = Math.max(B.t || B.v, Number(lsAmbil(SIMPAN_CEK)) || 0);
+    if (Date.now() - B.t > MAKS_SIMPAN) return null;   // terlalu basi
+    rakitPaket(B);                                     // uji: semua potongan lengkap?
+    return B;
   } catch (e) {
-    return null;     // localStorage diblokir browser — jalan seperti biasa
+    return null;
   }
 }
 
-function simpanPaket(p) {
-  try {
-    localStorage.setItem(SIMPAN, JSON.stringify(p));
-  } catch (e) {
-    // penyimpanan penuh atau diblokir — tidak apa-apa, cuma tidak tersimpan
+function simpanBlok(B) {
+  lsHapus(SIMPAN_LAMA);
+  if (!lsTaruh(SIMPAN, JSON.stringify(B))) lsHapus(SIMPAN);   // penuh -> jangan sisakan salinan basi
+}
+
+/** Susun potongan jadi paket siap cari (bentuknya sama persis dengan versi lama). */
+function rakitPaket(B) {
+  var nama = {}, n = [], idx = {}, k = [], i = [], j = [];
+  function potongan(daftar, olah) {
+    for (var a = 0; a < daftar.length; a++) {
+      var isi = B.b[daftar[a][0]];
+      if (!isi) throw new Error('Potongan data hilang');
+      for (var z = 0; z < isi.length; z++) olah(isi[z]);
+    }
   }
+  function ix(id) {
+    if (!(id in idx)) {
+      if (!(id in nama)) throw new Error('Nama barang hilang');
+      idx[id] = n.length; n.push(nama[id]);
+    }
+    return idx[id];
+  }
+  function ms(x) { return (x === null || x === undefined) ? null : (x < 1e11 ? x * 60000 : x); }
+  potongan(B.d.n, function (r) { nama[r[0]] = r[1]; });
+  potongan(B.d.k, function (r) { k.push([ix(r[0]), r[1], r[2], r[3]]); });
+  potongan(B.d.i, function (r) { i.push([ix(r[0]), r[1], r[2], ms(r[3]), r[4]]); });
+  potongan(B.d.j, function (r) { j.push([ix(r[0]), ms(r[1]), r[2], r[3], r[4], r[5]]); });
+  return { v: B.v, t: B.t, bl: B.bl, n: n, k: k, i: i, j: j };
+}
+
+/** Paket format lama/ringkas (server belum diperbarui): tanggal menit -> milidetik. */
+function bukaPaket(p) {
+  if (!p || p.f !== 2) return p;
+  function ms(x) { return (x === null || x === undefined) ? null : (x < 1e11 ? x * 60000 : x); }
+  for (var a = 0; a < p.i.length; a++) p.i[a][3] = ms(p.i[a][3]);
+  for (var b = 0; b < p.j.length; b++) p.j[b][1] = ms(p.j[b][1]);
+  delete p.f;
+  return p;
+}
+
+function catatCek(t) {
+  if (!t || !PAKET) return;
+  PAKET.t = t;
+  if (BLOK) BLOK.t = t;
+  lsTaruh(SIMPAN_CEK, String(t));
 }
 
 function setStatus(teks, sibuk) {
@@ -717,9 +774,12 @@ function setStatus(teks, sibuk) {
 
 function statusSiap(sibuk) {
   if (!PAKET) return;
-  setStatus('<b>' + PAKET.j.length.toLocaleString('id-ID') + '</b> transaksi · ' +
-            umurTeks(Math.round((Date.now() - PAKET.v) / 1000)) +
-            (sibuk ? ' · menyegarkan' : ''), sibuk);
+  setStatus('<b>' + PAKET.j.length.toLocaleString('id-ID') + '</b> penjualan' +
+            (PAKET.bl ? ' (' + PAKET.bl + ' bln)' : '') + ' · ' +
+            umurTeks(Math.round((Date.now() - (PAKET.t || PAKET.v)) / 1000)) +
+            (sibuk ? ' · menyegarkan'
+                   : GAGAL_SEGAR ? ' · <a href="#" onclick="return muatUlangManual()" ' +
+                                   'style="color:inherit">gagal menyegarkan, coba lagi</a>' : ''), sibuk);
 }
 
 function siapkanPaket(p) {
@@ -738,90 +798,164 @@ function siapkanPaket(p) {
   statusSiap(SEDANG_UNDUH);
 }
 
-function muatPaket(diam) {
+/**
+ * Muat / perbarui data.
+ *   penuh = true  -> unduh SEMUA potongan (pertama pasang, atau sekali sehari)
+ *   penuh = false -> unduh hanya potongan yang belum ada di HP
+ */
+function muatPaket(diam, penuh) {
   if (SEDANG_UNDUH) return;
   SEDANG_UNDUH = true;
+  penuh = !!penuh || !BLOK;
   if (diam) statusSiap(true); else setStatus('Memuat data…', true);
 
-  ambilPaketBertahap(function (err, p) {
+  ambilData(penuh, function (err, p, B) {
     if (!err) {
       SEDANG_UNDUH = false;
       PERCOBAAN = 0;
+      GAGAL_SEGAR = false;
       if (!p || !p.n) { setStatus('Data kosong', false); return; }
+      if (B) {
+        BLOK = B;
+        simpanBlok(B);
+        if (p.t) lsTaruh(SIMPAN_CEK, String(p.t));
+        if (penuh) lsTaruh(SIMPAN_PENUH, hariIni());
+      }
       siapkanPaket(p);
-      simpanPaket(p);
       var q = document.getElementById('q').value.trim();
       if (q && document.getElementById('hasil').innerHTML.indexOf('Menghitung') > -1) cari();
       return;
     }
-    (function (err) {
-      SEDANG_UNDUH = false;
-      if (err && err.kodeSalah) { mintaKode('Kode akses sudah diganti admin. Masukkan kode yang baru.'); return; }
-      if (SIAP) {                      // masih ada salinan lama — cukup diam
-        statusSiap(false);
-        return;
-      }
-      // Belum punya salinan: coba lagi otomatis. Percobaan pertama sering
-      // "membangunkan" server, percobaan berikutnya biasanya berhasil.
-      PERCOBAAN++;
-      if (PERCOBAAN < 4) {
-        setStatus('Mencoba lagi… (' + (PERCOBAAN + 1) + '/4)', true);
-        setTimeout(function () { muatPaket(false); }, PERCOBAAN * 4000);
-        return;
-      }
-      PERCOBAAN = 0;
-      setStatus('Gagal memuat data', false);
-      document.getElementById('hasil').innerHTML =
-        '<div class="sec"><div class="alert alert-err"><b>Data tidak bisa dimuat.</b><br>' +
-        esc(err && err.message ? err.message : 'Kesalahan tidak diketahui') +
-        '<br>Periksa sinyal, lalu tekan tombol di bawah.<br><br>' +
-        '<button onclick="this.disabled=true;muatPaket(false)">Coba lagi</button></div></div>';
-    })(err);
+    SEDANG_UNDUH = false;
+    if (err && err.kodeSalah) { mintaKode('Kode akses sudah diganti admin. Masukkan kode yang baru.'); return; }
+    if (SIAP) {                      // masih ada salinan lama — tetap dipakai
+      GAGAL_SEGAR = true;
+      statusSiap(false);
+      return;
+    }
+    // Belum punya salinan: coba lagi otomatis. Percobaan pertama sering
+    // "membangunkan" server, percobaan berikutnya biasanya berhasil.
+    PERCOBAAN++;
+    if (PERCOBAAN < 4) {
+      setStatus('Mencoba lagi… (' + (PERCOBAAN + 1) + '/4)', true);
+      setTimeout(function () { muatPaket(false, true); }, PERCOBAAN * 4000);
+      return;
+    }
+    PERCOBAAN = 0;
+    setStatus('Gagal memuat data', false);
+    document.getElementById('hasil').innerHTML =
+      '<div class="sec"><div class="alert alert-err"><b>Data tidak bisa dimuat.</b><br>' +
+      esc(err && err.message ? err.message : 'Kesalahan tidak diketahui') +
+      '<br>Periksa sinyal, lalu tekan tombol di bawah.<br><br>' +
+      '<button onclick="this.disabled=true;muatPaket(false,true)">Coba lagi</button></div></div>';
   });
 }
 
+/** Panggil server, dicoba ulang sampai 3 kali kalau jaringan gagal. */
+function panggilUlang(q, cb, coba) {
+  coba = coba || 0;
+  panggil(q, function (err, r) {
+    if (err && !err.kodeSalah && coba < 2) {
+      setTimeout(function () { panggilUlang(q, cb, coba + 1); }, 2000 * (coba + 1));
+      return;
+    }
+    cb(err, r);
+  }, 60000);
+}
+
 /**
- * Ambil paket dalam beberapa potongan kecil (bagian 0, 1, 2, ...), lalu
- * sambung. Tiap potongan dicoba ulang sampai 3 kali. Kalau versi data di
- * server berganti di tengah jalan, mulai lagi dari awal (sekali).
+ * 1. Ambil daftar sidik jari potongan (kecil).
+ * 2. Bandingkan dengan yang ada di HP -> tentukan potongan yang perlu diunduh.
+ * 3. Unduh potongan itu BERSAMAAN, dikelompokkan ± 200 ribu karakter per permintaan.
+ * 4. Rakit paket; potongan yang sudah tidak dipakai dibuang.
  */
-function ambilPaketBertahap(selesai, ulang) {
-  // Potongan pertama memberi tahu jumlah potongan; sisanya diambil
-  // BERSAMAAN (paralel), jadi waktunya kira-kira 2x panggilan saja.
-  var potong = [], versi = null, sisa = 0, gagal = false;
+function ambilData(penuh, selesai, ulang) {
+  // "bagian=0" membuat server LAMA menjawab potongan paket lama (bukan paket
+  // utuh yang terlalu besar), jadi aplikasi ini tetap jalan sebelum Kode.gs diperbarui.
+  panggilUlang('data=1&f=3&daftar=1&bagian=0', function (err, D) {
+    if (err) { selesai(err); return; }
+    if (D && !D.d && typeof D.s === 'string') { ambilPaketLama(selesai); return; }   // server lama
+    if (!D || !D.d) { selesai(new Error('Jawaban server tidak dikenali.')); return; }
 
-  function ambil(i, coba, lanjut) {
-    panggil('data=1&bagian=' + i, function (err, r) {
-      if (gagal) return;
-      if (err) {
-        if (err.kodeSalah || coba >= 2) { gagal = true; selesai(err); return; }
-        setTimeout(function () { ambil(i, coba + 1, lanjut); }, 2000 * (coba + 1));
-        return;
-      }
-      lanjut(r);
-    }, 60000);
-  }
+    var punya = (!penuh && BLOK && BLOK.b) || {};
+    var perlu = [], sudah = {}, total = 0;
+    ['n', 'k', 'i', 'j'].forEach(function (s) {
+      D.d[s].forEach(function (e) {
+        total += e[1];
+        if (punya[e[0]] || sudah[e[0]]) return;
+        sudah[e[0]] = 1; perlu.push(e);
+      });
+    });
 
-  function selesaiSemua() {
-    var p;
-    try { p = JSON.parse(potong.join('')); } catch (e) { selesai(new Error('Data rusak saat diunduh, coba lagi.')); return; }
-    selesai(null, p);
-  }
+    var kelompok = [], cur = [], uk = 0;
+    perlu.forEach(function (e) {
+      if (cur.length && (uk + e[1] > BATCH_KAR || cur.length >= 60)) { kelompok.push(cur); cur = []; uk = 0; }
+      cur.push(e[0]); uk += e[1];
+    });
+    if (cur.length) kelompok.push(cur);
 
-  ambil(0, 0, function (r0) {
-    versi = r0.v; potong[0] = r0.s; sisa = r0.total - 1;
-    if (!sisa) { selesaiSemua(); return; }
-    var dapat = 1;
-    for (var i = 1; i < r0.total; i++) (function (i) {
-      ambil(i, 0, function (r) {
-        if (r.v !== versi) {                      // data diperbarui saat mengunduh
+    var baru = {}, sisa = kelompok.length, gagal = false, dapat = 0;
+    var perluKar = perlu.reduce(function (a, e) { return a + e[1]; }, 0);
+
+    function rakit() {
+      var b = {};
+      ['n', 'k', 'i', 'j'].forEach(function (s) {
+        D.d[s].forEach(function (e) { b[e[0]] = baru[e[0]] || punya[e[0]]; });
+      });
+      var B = { v: D.v, t: D.t || 0, bl: D.bl, d: D.d, b: b }, p;
+      try { p = rakitPaket(B); } catch (e) { selesai(new Error('Data belum lengkap, coba lagi.')); return; }
+      selesai(null, p, B);
+    }
+
+    if (!sisa) { rakit(); return; }
+    kelompok.forEach(function (daftar) {
+      panggilUlang('data=1&f=3&ambil=' + daftar.join(','), function (err, r) {
+        if (gagal) return;
+        if (err) { gagal = true; selesai(err); return; }
+        if (r.hilang && r.hilang.length) {          // data diperbarui saat mengunduh
           gagal = true;
-          if (!ulang) ambilPaketBertahap(selesai, true);
+          if (!ulang) ambilData(penuh, selesai, true);
           else selesai(new Error('Data sedang diperbarui, coba lagi sebentar.'));
           return;
         }
-        potong[i] = r.s; dapat++;
-        if (!SIAP) setStatus('Memuat data… ' + Math.round(dapat / r0.total * 100) + '%', true);
+        for (var h in r.b) { baru[h] = r.b[h]; }
+        daftar.forEach(function (h) { var e = perlu.filter(function (x) { return x[0] === h; })[0]; if (e) dapat += e[1]; });
+        if (!SIAP) setStatus('Memuat data… ' + Math.round(dapat / perluKar * 100) + '%', true);
+        if (--sisa === 0) rakit();
+      });
+    });
+  });
+}
+
+/** Cadangan untuk server yang belum diperbarui: paket utuh dalam beberapa bagian. */
+function ambilPaketLama(selesai, ulang) {
+  var potong = [], versi = null, sisa = 0, gagal = false;
+  function ambil(i, lanjut) {
+    panggilUlang('data=1&bagian=' + i, function (err, r) {
+      if (gagal) return;
+      if (err) { gagal = true; selesai(err); return; }
+      lanjut(r);
+    });
+  }
+  function selesaiSemua() {
+    var p;
+    try { p = bukaPaket(JSON.parse(potong.join(''))); } catch (e) { selesai(new Error('Data rusak saat diunduh, coba lagi.')); return; }
+    selesai(null, p);
+  }
+  ambil(0, function (r0) {
+    if (r0 && r0.n && r0.j) { selesai(null, bukaPaket(r0)); return; }
+    if (!r0 || typeof r0.s !== 'string' || !(r0.total >= 1)) { selesai(new Error('Jawaban server tidak dikenali.')); return; }
+    versi = r0.v; potong[0] = r0.s; sisa = r0.total - 1;
+    if (!sisa) { selesaiSemua(); return; }
+    for (var i = 1; i < r0.total; i++) (function (i) {
+      ambil(i, function (r) {
+        if (r.v !== versi) {
+          gagal = true;
+          if (!ulang) ambilPaketLama(selesai, true);
+          else selesai(new Error('Data sedang diperbarui, coba lagi sebentar.'));
+          return;
+        }
+        potong[i] = r.s;
         if (--sisa === 0) selesaiSemua();
       });
     })(i);
@@ -831,16 +965,17 @@ function ambilPaketBertahap(selesai, ulang) {
 /** Cek berkala: kalau server punya data lebih baru, unduh diam-diam. */
 function cekVersi() {
   if (!SIAP || SEDANG_UNDUH) return;
-  panggil('versi=1', function (err, isi) {
+  if (BLOK && perluPenuh()) { muatPaket(true, true); return; }   // unduh penuh harian
+  panggil('versi=1&f=3', function (err, isi) {
     if (err && err.kodeSalah) { mintaKode('Kode akses sudah diganti admin. Masukkan kode yang baru.'); return; }
     if (err || !isi) return;
-    if (isi.v && PAKET && isi.v > PAKET.v) muatPaket(true);
-    else statusSiap(false);
+    if (isi.v && PAKET && isi.v !== PAKET.v) muatPaket(true, false);   // ada yang berubah
+    else { catatCek(isi.t); statusSiap(false); }                       // sama -> tidak perlu unduh
   }, 20000);
 }
 
 function muatUlangManual() {
-  muatPaket(true);
+  muatPaket(true, false);
   return false;
 }
 
@@ -1138,10 +1273,12 @@ function render(d) {
 function bukaAplikasi() {
   var tersimpan = ambilSimpanan();
   if (tersimpan) {
-    siapkanPaket(tersimpan);
-    setTimeout(cekVersi, 300);
+    BLOK = tersimpan;
+    siapkanPaket(rakitPaket(tersimpan));
+    setTimeout(cekVersi, 300);      // sekaligus unduh penuh kalau hari ini belum
   } else {
-    muatPaket(false);
+    lsHapus(SIMPAN_LAMA);
+    muatPaket(false, true);
   }
 }
 </script>
