@@ -11,7 +11,7 @@
  *
  * Panggilan ke Apps Script (domain lain) sengaja TIDAK disentuh.
  */
-var CACHE = 'identifikasi-v3';
+var CACHE = 'identifikasi-v4';
 var ASET = [
   './',
   './index.html',
@@ -47,8 +47,10 @@ self.addEventListener('fetch', function (e) {
   if (req.method !== 'GET') return;
   if (new URL(req.url).origin !== self.location.origin) return;   // Apps Script: lewat saja
 
+  // cache:'no-cache' = selalu tanya GitHub dulu (lewati cache 10 menit browser),
+  // supaya versi baru langsung terpakai setelah aplikasi dibuka ulang.
   e.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-cache' })
       .then(function (resp) {
         if (resp && resp.ok) {
           var salinan = resp.clone();
