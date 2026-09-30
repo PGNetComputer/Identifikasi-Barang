@@ -785,29 +785,47 @@ function muatPaket(diam) {
  * sambung. Tiap potongan dicoba ulang sampai 3 kali. Kalau versi data di
  * server berganti di tengah jalan, mulai lagi dari awal (sekali).
  */
-function ambilPaketBertahap(selesai) {
-  var potong = [], versi = null, ulangVersi = 0;
-  function ambil(i, coba) {
+function ambilPaketBertahap(selesai, ulang) {
+  // Potongan pertama memberi tahu jumlah potongan; sisanya diambil
+  // BERSAMAAN (paralel), jadi waktunya kira-kira 2x panggilan saja.
+  var potong = [], versi = null, sisa = 0, gagal = false;
+
+  function ambil(i, coba, lanjut) {
     panggil('data=1&bagian=' + i, function (err, r) {
+      if (gagal) return;
       if (err) {
-        if (err.kodeSalah || coba >= 2) { selesai(err); return; }
-        setTimeout(function () { ambil(i, coba + 1); }, 2000 * (coba + 1));
+        if (err.kodeSalah || coba >= 2) { gagal = true; selesai(err); return; }
+        setTimeout(function () { ambil(i, coba + 1, lanjut); }, 2000 * (coba + 1));
         return;
       }
-      if (versi === null) versi = r.v;
-      if (r.v !== versi) {                         // data diperbarui saat mengunduh
-        if (ulangVersi++ >= 1) { selesai(new Error('Data sedang diperbarui, coba lagi sebentar.')); return; }
-        potong = []; versi = null; ambil(0, 0); return;
-      }
-      potong[i] = r.s;
-      if (!SIAP) setStatus('Memuat data… ' + Math.round((i + 1) / r.total * 100) + '%', true);
-      if (i + 1 < r.total) { ambil(i + 1, 0); return; }
-      var p;
-      try { p = JSON.parse(potong.join('')); } catch (e) { selesai(new Error('Data rusak saat diunduh, coba lagi.')); return; }
-      selesai(null, p);
+      lanjut(r);
     }, 60000);
   }
-  ambil(0, 0);
+
+  function selesaiSemua() {
+    var p;
+    try { p = JSON.parse(potong.join('')); } catch (e) { selesai(new Error('Data rusak saat diunduh, coba lagi.')); return; }
+    selesai(null, p);
+  }
+
+  ambil(0, 0, function (r0) {
+    versi = r0.v; potong[0] = r0.s; sisa = r0.total - 1;
+    if (!sisa) { selesaiSemua(); return; }
+    var dapat = 1;
+    for (var i = 1; i < r0.total; i++) (function (i) {
+      ambil(i, 0, function (r) {
+        if (r.v !== versi) {                      // data diperbarui saat mengunduh
+          gagal = true;
+          if (!ulang) ambilPaketBertahap(selesai, true);
+          else selesai(new Error('Data sedang diperbarui, coba lagi sebentar.'));
+          return;
+        }
+        potong[i] = r.s; dapat++;
+        if (!SIAP) setStatus('Memuat data… ' + Math.round(dapat / r0.total * 100) + '%', true);
+        if (--sisa === 0) selesaiSemua();
+      });
+    })(i);
+  });
 }
 
 /** Cek berkala: kalau server punya data lebih baru, unduh diam-diam. */
